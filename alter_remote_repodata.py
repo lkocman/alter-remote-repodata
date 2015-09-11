@@ -92,6 +92,8 @@ def alter_local_repodata(path, dest, opts):
                  ("filelists_db", fil_db_path,  None, None),
                  ("other_db",     oth_db_path,  None, None),]
 
+
+    # append comps if any
     source_ml = cr.MetadataLocation(path, 1)
     if source_ml["group"]:
         shutil.copy(os.path.join(path, source_ml["group"]), repodata_path)
@@ -106,7 +108,12 @@ def alter_local_repodata(path, dest, opts):
         record = cr.RepomdRecord(name, path)
         if cs:
             record.load_contentstat(cs)
-        record.fill(get_checksum_type(opts.checksum))
+
+        # XXX hack
+        if path.endswith(".sqlite") and opts.sqlite_compression:
+            record = record.compress_and_fill(get_checksum_type(opts.checksum), get_compression_type(opts.sqlite_compression))
+        else:
+            record.fill(get_checksum_type(opts.checksum))
         if (db_to_update):
             db_to_update.dbinfo_update(record.checksum)
             db_to_update.close()
@@ -121,6 +128,7 @@ def main():
     parser.add_option("--dest", help="Destination for altered repodata (default=$cwd)", default=os.getcwd())
     parser.add_option("--compression", default="gz")
     parser.add_option("--checksum", default="md5")
+    parser.add_option("--sqlite-compression", default="bz2")
     opts, args = parser.parse_args()
 
     repodata_path = os.path.dirname(download_remote_repodata(opts.url)) # get rid of /repodata
