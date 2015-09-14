@@ -54,6 +54,9 @@ def alter_local_repodata(path, dest, opts):
     pri_db_path  = os.path.join(repodata_path, "primary.sqlite")
     fil_db_path  = os.path.join(repodata_path, "filelists.sqlite")
     oth_db_path  = os.path.join(repodata_path, "other.sqlite")
+    pri_db_cs = cr.ContentStat(get_checksum_type(opts.checksum))
+    fil_db_cs = cr.ContentStat(get_checksum_type(opts.checksum))
+    oth_db_cs = cr.ContentStat(get_checksum_type(opts.checksum))
 
     pri_xml_cs = cr.ContentStat(get_checksum_type(opts.checksum))
     fil_xml_cs = cr.ContentStat(get_checksum_type(opts.checksum))
@@ -88,9 +91,9 @@ def alter_local_repodata(path, dest, opts):
     repomdrecords = [("primary",  pri_xml_path, pri_xml_cs, pri_db),
                  ("filelists",    fil_xml_path, fil_xml_cs, fil_db),
                  ("other",        oth_xml_path, oth_xml_cs, oth_db),
-                 ("primary_db",   pri_db_path,  None, None),
-                 ("filelists_db", fil_db_path,  None, None),
-                 ("other_db",     oth_db_path,  None, None),]
+                 ("primary_db",   pri_db_path,  pri_db_cs, None),
+                 ("filelists_db", fil_db_path,  fil_db_cs, None),
+                 ("other_db",     oth_db_path,  oth_db_cs, None),]
 
 
     # append comps if any
@@ -105,15 +108,17 @@ def alter_local_repodata(path, dest, opts):
         repomdrecords.extend((("group", comps_xml_path, None, None), ("group_gz", comps_xml_gz_path, None, None)))
 
     for name, path, cs, db_to_update in repomdrecords:
+        # XXX hack
+        if path.endswith(".sqlite") and opts.sqlite_compression:
+            #record = record.compress_and_fill(get_checksum_type(opts.checksum), get_compression_type(opts.sqlite_compression))
+            n_path = "%s%s" % (path, cr.compression_suffix(get_compression_type(opts.sqlite_compression)))
+            cr.compress_file(path, n_path, get_compression_type(opts.sqlite_compression), stat=cs)
+            path = n_path
+
         record = cr.RepomdRecord(name, path)
         if cs:
             record.load_contentstat(cs)
-
-        # XXX hack
-        if path.endswith(".sqlite") and opts.sqlite_compression:
-            record = record.compress_and_fill(get_checksum_type(opts.checksum), get_compression_type(opts.sqlite_compression))
-        else:
-            record.fill(get_checksum_type(opts.checksum))
+        record.fill(get_checksum_type(opts.checksum))
         if (db_to_update):
             db_to_update.dbinfo_update(record.checksum)
             db_to_update.close()
@@ -127,8 +132,8 @@ def main():
     parser.add_option("--url", help="http://path/to/repo")
     parser.add_option("--dest", help="Destination for altered repodata (default=$cwd)", default=os.getcwd())
     parser.add_option("--compression", default="gz")
-    parser.add_option("--checksum", default="md5")
     parser.add_option("--sqlite-compression", default="bz2")
+    parser.add_option("--checksum", default="md5")
     opts, args = parser.parse_args()
 
     repodata_path = os.path.dirname(download_remote_repodata(opts.url)) # get rid of /repodata
